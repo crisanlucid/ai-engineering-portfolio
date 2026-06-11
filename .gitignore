@@ -10,9 +10,6 @@ build/
 .pytest_cache/
 *.egg
 
-# uv
-uv.lock
-
 # Frontend
 node_modules/
 .next/
