@@ -22,6 +22,8 @@ ai-engineering-portfolio/
 
 This project uses **[uv](https://docs.astral.sh/uv/)** — a fast Python package and project manager written in Rust. It replaces `pip`, `venv`, `pipx`, and `pip-tools` in a single tool. All dependencies are installed into a local `.venv` inside the repo; nothing is installed globally.
 
+`uv.lock` is committed to the repo — cloning and running `make install` gives the exact same dependency versions on any machine.
+
 ## Setup
 
 ```bash
