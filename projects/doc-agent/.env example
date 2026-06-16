@@ -18,3 +18,7 @@ AGENT_JUDGE=true
 # Multilingual
 LANGUAGE=en
 # Options: en, de
+
+# Webhook
+WEBHOOK_HOST=0.0.0.0
+WEBHOOK_PORT=8000
