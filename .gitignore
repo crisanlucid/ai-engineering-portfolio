@@ -1,26 +1,32 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-*.egg
-
-# Frontend
-node_modules/
-.next/
-dist/
-.env.local
-
-# Env
+# Secrets
 .env
 .env.*
 !.env.example
 
+# Vector store
+.chroma/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Frontend
+node_modules/
+.next/
+.env.local
+
 # IDE
 .idea/
 *.swp
+
+# OS
+.DS_Store
