@@ -30,3 +30,7 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Project notes
+NOTICE.md
+plan.md
