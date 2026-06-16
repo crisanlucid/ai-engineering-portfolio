@@ -6,12 +6,14 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from llm import LLMAdapter, get_adapter
+from judge import JudgeResult, judge as llm_judge
 
 load_dotenv()
 
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", ".chroma")
 LANGUAGE = os.getenv("LANGUAGE", "en")
 AGENT_DEBUG = os.getenv("AGENT_DEBUG", "false").lower() == "true"
+AGENT_JUDGE = os.getenv("AGENT_JUDGE", "false").lower() == "true"
 
 SYSTEM_PROMPTS = {
     "en": """You are a helpful assistant.
@@ -99,14 +101,25 @@ def format_context(scored_docs: list[tuple[Document, float]]) -> str:
     return ctx
 
 
-def ask(vectorstore, question: str, adapter: LLMAdapter) -> str:
+def ask(
+    vectorstore,
+    question: str,
+    adapter: LLMAdapter,
+) -> tuple[str, JudgeResult | None]:
     scored_docs = retrieve(vectorstore, question)
     if AGENT_DEBUG:
         _print_debug_scores(scored_docs)
     context = format_context(scored_docs)
     user = f"Context:\n{context}\n\nQuestion: {question}"
     print("Thinking...", flush=True)
-    return adapter.complete(SYSTEM_PROMPTS[LANGUAGE], user)
+    answer = adapter.complete(SYSTEM_PROMPTS[LANGUAGE], user)
+
+    result: JudgeResult | None = None
+    if AGENT_JUDGE:
+        print("Judging...", flush=True)
+        result = llm_judge(scored_docs, answer, adapter)
+
+    return answer, result
 
 def main():
     provider = os.getenv("LLM_PROVIDER", "cli")
@@ -131,8 +144,10 @@ def main():
             print("Goodbye.")
             break
 
-        answer = ask(vectorstore, question, adapter)
+        answer, verdict = ask(vectorstore, question, adapter)
         print(f"\nAnswer:\n{answer}\n")
+        if verdict is not None:
+            print(f"Judge:  {verdict.badge()}\n")
 
 if __name__ == "__main__":
     main()

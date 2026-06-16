@@ -185,14 +185,25 @@ class TestAsk:
         import chat
         vs, adapter = self._setup()
         with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
              patch("builtins.print"):
-            result = chat.ask(vs, "what?", adapter)
-        assert result == "the answer"
+            answer, _ = chat.ask(vs, "what?", adapter)
+        assert answer == "the answer"
+
+    def test_returns_none_verdict_when_judge_off(self):
+        import chat
+        vs, adapter = self._setup()
+        with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
+             patch("builtins.print"):
+            _, verdict = chat.ask(vs, "what?", adapter)
+        assert verdict is None
 
     def test_adapter_complete_called_once(self):
         import chat
         vs, adapter = self._setup()
         with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
              patch("builtins.print"):
             chat.ask(vs, "what?", adapter)
         adapter.complete.assert_called_once()
@@ -201,6 +212,7 @@ class TestAsk:
         import chat
         vs, adapter = self._setup()
         with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
              patch("builtins.print"):
             chat.ask(vs, "what?", adapter)
         _, user_prompt = adapter.complete.call_args[0]
@@ -211,6 +223,7 @@ class TestAsk:
         import chat
         vs, adapter = self._setup()
         with patch.object(chat, "AGENT_DEBUG", True), \
+             patch.object(chat, "AGENT_JUDGE", False), \
              patch("builtins.print"), \
              patch("chat._print_debug_scores") as mock_debug:
             chat.ask(vs, "what?", adapter)
@@ -220,10 +233,60 @@ class TestAsk:
         import chat
         vs, adapter = self._setup()
         with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
              patch("builtins.print"), \
              patch("chat._print_debug_scores") as mock_debug:
             chat.ask(vs, "what?", adapter)
         mock_debug.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# ask() — judge wiring
+# ---------------------------------------------------------------------------
+
+class TestAskJudge:
+    def _setup(self):
+        vs = MagicMock()
+        vs.similarity_search_with_score.return_value = [
+            (_doc("context", "docs/a.md"), 0.4)
+        ]
+        adapter = MagicMock()
+        adapter.complete.return_value = "the answer"
+        return vs, adapter
+
+    def test_judge_called_when_agent_judge_on(self):
+        import chat
+        from judge import JudgeResult, Verdict
+        fake_result = JudgeResult(verdict=Verdict.SUPPORTED, reason="ok")
+        vs, adapter = self._setup()
+        with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", True), \
+             patch("builtins.print"), \
+             patch("chat.llm_judge", return_value=fake_result) as mock_judge:
+            chat.ask(vs, "q?", adapter)
+        mock_judge.assert_called_once()
+
+    def test_judge_not_called_when_agent_judge_off(self):
+        import chat
+        vs, adapter = self._setup()
+        with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", False), \
+             patch("builtins.print"), \
+             patch("chat.llm_judge") as mock_judge:
+            chat.ask(vs, "q?", adapter)
+        mock_judge.assert_not_called()
+
+    def test_verdict_returned_when_judge_on(self):
+        import chat
+        from judge import JudgeResult, Verdict
+        fake_result = JudgeResult(verdict=Verdict.PARTIAL, reason="incomplete")
+        vs, adapter = self._setup()
+        with patch.object(chat, "AGENT_DEBUG", False), \
+             patch.object(chat, "AGENT_JUDGE", True), \
+             patch("builtins.print"), \
+             patch("chat.llm_judge", return_value=fake_result):
+            _, verdict = chat.ask(vs, "q?", adapter)
+        assert verdict is fake_result
 
 
 # ---------------------------------------------------------------------------
