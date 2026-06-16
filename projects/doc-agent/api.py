@@ -25,7 +25,7 @@ load_dotenv()
 
 AGENT_JUDGE = os.getenv("AGENT_JUDGE", "false").lower() == "true"
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
-WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8000"))
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "9010"))
 
 # ---------------------------------------------------------------------------
 # App state — vectorstore and adapter loaded once at startup
