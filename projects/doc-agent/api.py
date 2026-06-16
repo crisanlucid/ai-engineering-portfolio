@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from chat import retrieve, format_context, SYSTEM_PROMPTS, LANGUAGE
@@ -114,31 +114,20 @@ async def health():
     )
 
 
-@app.post("/ask", response_model=AskResponse, tags=["RAG"])
-async def ask(request: AskRequest):
-    """
-    Ask a question against the ingested documents.
-
-    - Retrieves the top-k most relevant chunks from ChromaDB
-    - Augments a prompt with the chunks and sends it to the configured LLM
-    - Optionally validates the answer with an LLM-as-judge
-    """
+def _run_ask(question: str, k: int, judge: bool | None) -> AskResponse:
+    """Shared logic for GET and POST /ask."""
     if "vectorstore" not in _state:
         raise HTTPException(status_code=503, detail="Vectorstore not ready")
 
     vectorstore: Any = _state["vectorstore"]
     adapter: LLMAdapter = _state["adapter"]
 
-    # Retrieve
-    scored_docs = retrieve(vectorstore, request.question, k=request.k)
-
-    # Build LLM prompt
+    scored_docs = retrieve(vectorstore, question, k=k)
     context = format_context(scored_docs)
-    user_prompt = f"Context:\n{context}\n\nQuestion: {request.question}"
+    user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
     answer = adapter.complete(SYSTEM_PROMPTS[LANGUAGE], user_prompt)
 
-    # Judge
-    run_judge = request.judge if request.judge is not None else AGENT_JUDGE
+    run_judge = judge if judge is not None else AGENT_JUDGE
     verdict_info: VerdictInfo | None = None
     if run_judge:
         result = llm_judge(scored_docs, answer, adapter)
@@ -147,7 +136,6 @@ async def ask(request: AskRequest):
             reason=result.reason,
         )
 
-    # Build response
     chunks = [
         ChunkInfo(
             source=doc.metadata.get("source", "unknown"),
@@ -156,14 +144,35 @@ async def ask(request: AskRequest):
         )
         for doc, score in scored_docs
     ]
-    sources = list(dict.fromkeys(c.source for c in chunks))  # unique, ordered
+    sources = list(dict.fromkeys(c.source for c in chunks))
+    return AskResponse(answer=answer, sources=sources, chunks=chunks, verdict=verdict_info)
 
-    return AskResponse(
-        answer=answer,
-        sources=sources,
-        chunks=chunks,
-        verdict=verdict_info,
-    )
+
+@app.get("/ask", response_model=AskResponse, tags=["RAG"])
+async def ask_get(
+    question: str = Query(..., min_length=1, description="The question to answer"),
+    k: int = Query(3, ge=1, le=10, description="Number of chunks to retrieve"),
+    judge: bool | None = Query(None, description="Run LLM-as-judge"),
+):
+    """
+    Ask a question via URL — handy for quick browser or curl tests.
+
+        GET /ask?question=What+does+tesseract.js+do?
+        GET /ask?question=...&k=5&judge=true
+    """
+    return _run_ask(question, k, judge)
+
+
+@app.post("/ask", response_model=AskResponse, tags=["RAG"])
+async def ask_post(request: AskRequest):
+    """
+    Ask a question against the ingested documents.
+
+    - Retrieves the top-k most relevant chunks from ChromaDB
+    - Augments a prompt with the chunks and sends it to the configured LLM
+    - Optionally validates the answer with an LLM-as-judge
+    """
+    return _run_ask(request.question, request.k, request.judge)
 
 
 # ---------------------------------------------------------------------------

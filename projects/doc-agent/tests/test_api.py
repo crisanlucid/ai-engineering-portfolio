@@ -188,3 +188,37 @@ class TestAsk:
         )
         resp = client.post("/ask", json={"question": "q", "k": 0})
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /ask
+# ---------------------------------------------------------------------------
+
+class TestAskGet:
+    def test_returns_200_with_answer(self):
+        client = _make_app(
+            vectorstore=_mock_vectorstore(),
+            adapter=_mock_adapter("browser answer"),
+        )
+        resp = client.get("/ask", params={"question": "What is this?"})
+        assert resp.status_code == 200
+        assert resp.json()["answer"] == "browser answer"
+
+    def test_missing_question_returns_422(self):
+        client = _make_app(
+            vectorstore=_mock_vectorstore(),
+            adapter=_mock_adapter(),
+        )
+        resp = client.get("/ask")
+        assert resp.status_code == 422
+
+    def test_k_param_forwarded(self):
+        vs = _mock_vectorstore()
+        client = _make_app(vectorstore=vs, adapter=_mock_adapter())
+        client.get("/ask", params={"question": "q", "k": 7})
+        vs.similarity_search_with_score.assert_called_once_with("q", k=7)
+
+    def test_returns_503_when_not_ready(self):
+        client = _make_app()
+        resp = client.get("/ask", params={"question": "hello"})
+        assert resp.status_code == 503
