@@ -119,7 +119,12 @@ def main():
     print("Ready. Type your question.\n")
 
     while True:
-        question = input(prompt).strip()
+        try:
+            question = input(prompt).strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nGoodbye.")
+            break
+
         if not question:
             continue
         if question.lower() == "exit":

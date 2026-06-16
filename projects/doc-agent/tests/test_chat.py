@@ -224,3 +224,38 @@ class TestAsk:
              patch("chat._print_debug_scores") as mock_debug:
             chat.ask(vs, "what?", adapter)
         mock_debug.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# main() — graceful exit on Ctrl+C / Ctrl+D
+# ---------------------------------------------------------------------------
+
+class TestMain:
+    def _mock_vectorstore(self):
+        vs = MagicMock()
+        vs.similarity_search_with_score.return_value = []
+        return vs
+
+    def test_keyboard_interrupt_exits_cleanly(self, capsys):
+        import chat
+        with patch("chat.get_adapter", return_value=MagicMock()), \
+             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
+             patch("builtins.input", side_effect=KeyboardInterrupt):
+            chat.main()  # must not raise
+        assert "Goodbye." in capsys.readouterr().out
+
+    def test_eof_error_exits_cleanly(self, capsys):
+        import chat
+        with patch("chat.get_adapter", return_value=MagicMock()), \
+             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
+             patch("builtins.input", side_effect=EOFError):
+            chat.main()  # must not raise
+        assert "Goodbye." in capsys.readouterr().out
+
+    def test_exit_command_exits_cleanly(self, capsys):
+        import chat
+        with patch("chat.get_adapter", return_value=MagicMock()), \
+             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
+             patch("builtins.input", return_value="exit"):
+            chat.main()
+        assert "Goodbye." in capsys.readouterr().out
