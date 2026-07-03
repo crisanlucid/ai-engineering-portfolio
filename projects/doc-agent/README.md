@@ -29,11 +29,14 @@ Documents (docs/*.md)
         ▼
   ingest.py
   ├── load_documents()       — reads .md files from docs/
+  ├── load_manifest()        — loads .chroma/manifest.json (doc cache)
+  ├── partition_documents()  — level-1 cache: skip unchanged docs by hash
   ├── chunk_documents()      — RecursiveCharacterTextSplitter
-  └── embed_and_store()      — intfloat/multilingual-e5-large → ChromaDB
+  ├── sync_store()           — level-2 cache: embed new (batched) / reuse / delete stale chunks by hash
+  └── save_manifest()        — persists updated manifest
         │
         ▼
-  .chroma/  (persisted vector store)
+  .chroma/  (persisted vector store + manifest.json)
 ════════════════════════════════════════════════
   User question
         │
@@ -47,6 +50,38 @@ Documents (docs/*.md)
         ├── llm.py           — LLMAdapter (CLI / Anthropic / Google / agy)
         └── judge.py         — LLM-as-judge → SUPPORTED / PARTIAL / NOT_SUPPORTED
 ```
+
+---
+
+## Cache Limitation
+
+Chunk reuse depends on where an edit lands in the document.
+`RecursiveCharacterTextSplitter` splits by character offset — an edit
+near the top shifts all downstream chunk boundaries, causing
+re-embedding even for largely unchanged content.
+
+An edit near the end reuses most chunks.
+
+Fix: `SemanticChunker` — but adds embedding cost during splitting.
+Only worth it at high document volume with frequent small edits.
+
+---
+
+## Manifest Consistency
+
+`manifest.json` is a denormalized index, not a source of truth — every value
+it stores (`source`, `doc_hash`, `chunk_id`) already lives in each chunk's
+Chroma metadata. It exists only so a no-op run can skip loading the embedding
+model and querying Chroma entirely.
+
+`save_manifest()` runs once, after `sync_store()` finishes. If the process
+dies mid-`sync_store` (embedding failure, OOM), Chroma holds partial writes
+but the manifest never gets updated to match — the next run then trusts a
+stale index.
+
+Alternative: derive hashes from Chroma metadata directly
+(`get(where={"source": ...})`), removing the desync risk at the cost of the
+fast no-op path.
 
 ---
 
@@ -98,6 +133,7 @@ CHROMA_PERSIST_DIR=.chroma
 DOCS_DIR=docs
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=100
+EMBED_BATCH_SIZE=100
 
 # Language — en | de
 LANGUAGE=en
@@ -181,7 +217,8 @@ doc-agent/
 ├── tests/
 │   ├── test_chat.py   # 27 tests — retrieve, format, ask, judge wiring, main()
 │   ├── test_llm.py    # 15 tests — adapter routing, subprocess behaviour
-│   └── test_judge.py  # 22 tests — parsing, badge, judge() integration
+│   ├── test_judge.py  # 22 tests — parsing, badge, judge() integration
+│   └── test_ingest.py # 13 tests — doc/chunk hash caching, batched embedding
 └── .env example       # Configuration template
 ```
 
@@ -193,4 +230,4 @@ doc-agent/
 uv run pytest projects/doc-agent/tests/ -v
 ```
 
-64 tests, no network calls, no LLM invocations — all external dependencies are mocked.
+77 tests, no network calls, no LLM invocations — all external dependencies are mocked.
