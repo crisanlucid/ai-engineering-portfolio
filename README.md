@@ -8,6 +8,7 @@ Autonomous agents, RAG pipelines, and agentic tools built in public.
 | # | Project | Description | Status |
 |---|---|---|---|
 | 01 | [rag-pipeline](projects/doc-agent) | RAG + Cache | ✅ |
+| 02 | [autonomous-agent](projects/autonomous-agent) | Single Agent | 📋 |
 
 ## Structure
 
