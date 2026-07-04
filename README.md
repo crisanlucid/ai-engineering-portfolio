@@ -3,6 +3,12 @@
 From fullstack to AI Engineering.  
 Autonomous agents, RAG pipelines, and agentic tools built in public.
 
+## Projects
+
+| # | Project | Description | Status |
+|---|---|---|---|
+| 01 | [rag-pipeline](projects/doc-agent) | RAG + Cache | ✅ |
+
 ## Structure
 
 ```
