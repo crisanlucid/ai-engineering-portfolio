@@ -104,7 +104,7 @@ python ingest.py
 ```
 
 This chunks your docs, embeds them with
-[`intfloat/multilingual-e5-large`](https://huggingface.co/intfloat/multilingual-e5-large),
+[`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small),
 and stores them in ChromaDB.
 
 ### 4. Chat
@@ -134,6 +134,7 @@ DOCS_DIR=docs
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=100
 EMBED_BATCH_SIZE=100
+EMBEDDING_MODEL=intfloat/multilingual-e5-small
 
 # Language — en | de
 LANGUAGE=en

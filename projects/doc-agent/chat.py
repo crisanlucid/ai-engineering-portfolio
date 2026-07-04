@@ -11,6 +11,7 @@ from judge import JudgeResult, judge as llm_judge
 load_dotenv()
 
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", ".chroma")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 LANGUAGE = os.getenv("LANGUAGE", "en")
 AGENT_DEBUG = os.getenv("AGENT_DEBUG", "false").lower() == "true"
 AGENT_JUDGE = os.getenv("AGENT_JUDGE", "false").lower() == "true"
@@ -50,7 +51,7 @@ def load_vectorstore():
     t.start()
 
     embeddings = HuggingFaceEmbeddings(
-        model_name="intfloat/multilingual-e5-large",
+        model_name=EMBEDDING_MODEL,
         model_kwargs={"device": "cpu"}
     )
 

@@ -17,6 +17,7 @@ CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", ".chroma")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 50))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", 100))
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 MANIFEST_PATH = Path(CHROMA_PERSIST_DIR) / "manifest.json"
 
 
@@ -98,7 +99,7 @@ def sync_store(
     """
     print(f"Syncing chunks with Chroma at {CHROMA_PERSIST_DIR}...")
     embeddings = HuggingFaceEmbeddings(
-        model_name="intfloat/multilingual-e5-large",
+        model_name=EMBEDDING_MODEL,
         model_kwargs={"device": "cuda" if os.getenv("USE_CUDA", "false").lower() == "true" else "cpu"}
     )
     vector_store = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
