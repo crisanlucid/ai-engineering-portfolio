@@ -1,12 +1,13 @@
 import os
 import sys
-from dotenv import load_dotenv
-from langchain_core.documents import Document
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 
+from dotenv import load_dotenv
+from judge import JudgeResult
+from judge import judge as llm_judge
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
 from llm import LLMAdapter, get_adapter
-from judge import JudgeResult, judge as llm_judge
 
 load_dotenv()
 
@@ -21,19 +22,19 @@ SYSTEM_PROMPTS = {
 Answer only from the provided context.
 If the answer is not in the context, say: "I don't know based on the provided documents."
 Always cite the source doc at the end of your answer.""",
-
     "de": """Du bist ein hilfreicher Assistent.
 Antworte nur auf Basis des bereitgestellten Kontexts.
 Wenn die Antwort nicht im Kontext enthalten ist, sage: "Das kann ich anhand der bereitgestellten Dokumente nicht beantworten."
-Zitiere am Ende deiner Antwort immer das Quelldokument."""
+Zitiere am Ende deiner Antwort immer das Quelldokument.""",
 }
 
 CLI_PROMPTS = {
     "en": "Ask a question (or 'exit' to quit): ",
-    "de": "Stelle eine Frage (oder 'exit' zum Beenden): "
+    "de": "Stelle eine Frage (oder 'exit' zum Beenden): ",
 }
 
-def load_vectorstore():
+
+def load_vectorstore() -> Chroma:
     print("Loading embedding model... (this takes 20-30s on first run)")
     print("Please wait", end="", flush=True)
 
@@ -42,7 +43,7 @@ def load_vectorstore():
 
     done = False
 
-    def spinner():
+    def spinner() -> None:
         while not done:
             print(".", end="", flush=True)
             time.sleep(1)
@@ -50,23 +51,18 @@ def load_vectorstore():
     t = threading.Thread(target=spinner)
     t.start()
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cpu"}
-    )
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL, model_kwargs={"device": "cpu"})
 
     done = True
     t.join()
     print(" done!")
 
-    vectorstore = Chroma(
-        persist_directory=CHROMA_PERSIST_DIR,
-        embedding_function=embeddings
-    )
+    vectorstore = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
     print("Vector store loaded. Ready.\n")
     return vectorstore
 
-def retrieve(vectorstore, question: str, k: int = 3) -> list[tuple[Document, float]]:
+
+def retrieve(vectorstore: Chroma, question: str, k: int = 3) -> list[tuple[Document, float]]:
     """Return (doc, cosine_similarity) pairs.
 
     Chroma's similarity_search_with_score returns squared L2 distance.
@@ -87,7 +83,7 @@ def _print_debug_scores(scored_docs: list[tuple[Document, float]]) -> None:
         src = doc.metadata.get("source", "unknown")
         bar_len = int(score * 20)
         bar = "█" * bar_len + "░" * (20 - bar_len)
-        print(f"\033[90m│  Chunk {i+1}  [{bar}]  {score:.4f}  {src}\033[0m", file=sys.stderr)
+        print(f"\033[90m│  Chunk {i + 1}  [{bar}]  {score:.4f}  {src}\033[0m", file=sys.stderr)
     print("\033[90m└" + "─" * 60 + "┘\033[0m\n", file=sys.stderr)
 
 
@@ -96,17 +92,17 @@ def format_context(scored_docs: list[tuple[Document, float]]) -> str:
     for i, (doc, score) in enumerate(scored_docs):
         src = doc.metadata.get("source", "unknown")
         score_tag = f" | cosine: {score:.4f}" if AGENT_DEBUG else ""
-        ctx += f"\n--- Chunk {i+1} | source: {src}{score_tag} ---\n"
+        ctx += f"\n--- Chunk {i + 1} | source: {src}{score_tag} ---\n"
         ctx += doc.page_content
         ctx += "\n"
     return ctx
 
 
 def ask(
-    vectorstore,
+    vectorstore: Chroma,
     question: str,
     adapter: LLMAdapter,
-) -> tuple[str, JudgeResult | None]:
+ ) -> tuple[str, JudgeResult | None]:
     scored_docs = retrieve(vectorstore, question)
     if AGENT_DEBUG:
         _print_debug_scores(scored_docs)
@@ -122,7 +118,8 @@ def ask(
 
     return answer, result
 
-def main():
+
+def main() -> None:
     provider = os.getenv("LLM_PROVIDER", "cli")
     print(f"Doc Agent starting — language: {LANGUAGE}, provider: {provider}")
 
@@ -149,6 +146,7 @@ def main():
         print(f"\nAnswer:\n{answer}\n")
         if verdict is not None:
             print(f"Judge:  {verdict.badge()}\n")
+
 
 if __name__ == "__main__":
     main()

@@ -1,15 +1,15 @@
 """Unit tests for chat.py — retrieval, scoring, formatting and ask()."""
+
 import io
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.documents import Document
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _doc(content: str, source: str = "docs/test.md") -> Document:
     return Document(page_content=content, metadata={"source": source})
@@ -24,6 +24,7 @@ def _scored(content: str, l2_dist: float, source: str = "docs/test.md"):
 # retrieve() — L2 → cosine conversion
 # ---------------------------------------------------------------------------
 
+
 class TestRetrieve:
     """retrieve() wraps similarity_search_with_score and converts distances."""
 
@@ -34,6 +35,7 @@ class TestRetrieve:
 
     def test_perfect_match_gives_score_of_one(self):
         import chat
+
         vs = self._make_vectorstore([_scored("exact", l2_dist=0.0)])
         results = chat.retrieve(vs, "exact", k=1)
         doc, score = results[0]
@@ -41,6 +43,7 @@ class TestRetrieve:
 
     def test_score_is_clamped_to_zero(self):
         import chat
+
         # l2_dist > 2.0 would produce negative cosine — must clamp to 0
         vs = self._make_vectorstore([_scored("far", l2_dist=3.0)])
         _, score = chat.retrieve(vs, "far", k=1)[0]
@@ -48,6 +51,7 @@ class TestRetrieve:
 
     def test_known_l2_distance_converts_correctly(self):
         import chat
+
         # cosine_sim = 1 - (l2 / 2)  →  l2=0.4 → 1 - 0.2 = 0.8
         vs = self._make_vectorstore([_scored("mid", l2_dist=0.4)])
         _, score = chat.retrieve(vs, "mid", k=1)[0]
@@ -55,6 +59,7 @@ class TestRetrieve:
 
     def test_returns_requested_k_results(self):
         import chat
+
         pairs = [_scored(f"doc{i}", l2_dist=0.1 * i) for i in range(5)]
         vs = self._make_vectorstore(pairs)
         results = chat.retrieve(vs, "q", k=3)
@@ -63,12 +68,14 @@ class TestRetrieve:
 
     def test_scores_are_rounded_to_4dp(self):
         import chat
+
         vs = self._make_vectorstore([_scored("x", l2_dist=0.333333)])
         _, score = chat.retrieve(vs, "x", k=1)[0]
         assert score == round(1.0 - 0.333333 / 2.0, 4)
 
     def test_document_is_preserved(self):
         import chat
+
         doc = _doc("hello", source="src/foo.md")
         vs = self._make_vectorstore([(doc, 0.5)])
         results = chat.retrieve(vs, "hello", k=1)
@@ -80,6 +87,7 @@ class TestRetrieve:
 # format_context()
 # ---------------------------------------------------------------------------
 
+
 class TestFormatContext:
     def _pairs(self):
         return [
@@ -89,6 +97,7 @@ class TestFormatContext:
 
     def test_contains_all_chunk_content(self):
         import chat
+
         with patch.object(chat, "AGENT_DEBUG", False):
             ctx = chat.format_context(self._pairs())
         assert "content A" in ctx
@@ -96,6 +105,7 @@ class TestFormatContext:
 
     def test_chunk_headers_include_source(self):
         import chat
+
         with patch.object(chat, "AGENT_DEBUG", False):
             ctx = chat.format_context(self._pairs())
         assert "source: a.md" in ctx
@@ -103,12 +113,14 @@ class TestFormatContext:
 
     def test_no_score_tag_when_debug_off(self):
         import chat
+
         with patch.object(chat, "AGENT_DEBUG", False):
             ctx = chat.format_context(self._pairs())
         assert "cosine" not in ctx
 
     def test_score_tag_present_when_debug_on(self):
         import chat
+
         with patch.object(chat, "AGENT_DEBUG", True):
             ctx = chat.format_context(self._pairs())
         assert "cosine: 0.9000" in ctx
@@ -116,6 +128,7 @@ class TestFormatContext:
 
     def test_chunk_numbering_starts_at_one(self):
         import chat
+
         with patch.object(chat, "AGENT_DEBUG", False):
             ctx = chat.format_context(self._pairs())
         assert "Chunk 1" in ctx
@@ -126,6 +139,7 @@ class TestFormatContext:
 # _print_debug_scores()
 # ---------------------------------------------------------------------------
 
+
 class TestPrintDebugScores:
     def _pairs(self):
         return [
@@ -135,6 +149,7 @@ class TestPrintDebugScores:
 
     def test_outputs_to_stderr(self):
         import chat
+
         buf = io.StringIO()
         with patch("sys.stderr", buf):
             chat._print_debug_scores(self._pairs())
@@ -143,6 +158,7 @@ class TestPrintDebugScores:
 
     def test_each_source_is_printed(self):
         import chat
+
         buf = io.StringIO()
         with patch("sys.stderr", buf):
             chat._print_debug_scores(self._pairs())
@@ -152,6 +168,7 @@ class TestPrintDebugScores:
 
     def test_scores_are_printed(self):
         import chat
+
         buf = io.StringIO()
         with patch("sys.stderr", buf):
             chat._print_debug_scores(self._pairs())
@@ -161,6 +178,7 @@ class TestPrintDebugScores:
 
     def test_debug_header_is_present(self):
         import chat
+
         buf = io.StringIO()
         with patch("sys.stderr", buf):
             chat._print_debug_scores(self._pairs())
@@ -170,6 +188,7 @@ class TestPrintDebugScores:
 # ---------------------------------------------------------------------------
 # ask()
 # ---------------------------------------------------------------------------
+
 
 class TestAsk:
     def _setup(self, l2_dist: float = 0.4):
@@ -183,37 +202,49 @@ class TestAsk:
 
     def test_returns_adapter_response(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"):
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+        ):
             answer, _ = chat.ask(vs, "what?", adapter)
         assert answer == "the answer"
 
     def test_returns_none_verdict_when_judge_off(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"):
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+        ):
             _, verdict = chat.ask(vs, "what?", adapter)
         assert verdict is None
 
     def test_adapter_complete_called_once(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"):
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+        ):
             chat.ask(vs, "what?", adapter)
         adapter.complete.assert_called_once()
 
     def test_context_included_in_user_prompt(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"):
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+        ):
             chat.ask(vs, "what?", adapter)
         _, user_prompt = adapter.complete.call_args[0]
         assert "relevant content" in user_prompt
@@ -221,21 +252,27 @@ class TestAsk:
 
     def test_debug_scores_printed_when_debug_on(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", True), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"), \
-             patch("chat._print_debug_scores") as mock_debug:
+        with (
+            patch.object(chat, "AGENT_DEBUG", True),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+            patch("chat._print_debug_scores") as mock_debug,
+        ):
             chat.ask(vs, "what?", adapter)
         mock_debug.assert_called_once()
 
     def test_debug_scores_not_printed_when_debug_off(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"), \
-             patch("chat._print_debug_scores") as mock_debug:
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+            patch("chat._print_debug_scores") as mock_debug,
+        ):
             chat.ask(vs, "what?", adapter)
         mock_debug.assert_not_called()
 
@@ -244,12 +281,11 @@ class TestAsk:
 # ask() — judge wiring
 # ---------------------------------------------------------------------------
 
+
 class TestAskJudge:
     def _setup(self):
         vs = MagicMock()
-        vs.similarity_search_with_score.return_value = [
-            (_doc("context", "docs/a.md"), 0.4)
-        ]
+        vs.similarity_search_with_score.return_value = [(_doc("context", "docs/a.md"), 0.4)]
         adapter = MagicMock()
         adapter.complete.return_value = "the answer"
         return vs, adapter
@@ -257,34 +293,43 @@ class TestAskJudge:
     def test_judge_called_when_agent_judge_on(self):
         import chat
         from judge import JudgeResult, Verdict
+
         fake_result = JudgeResult(verdict=Verdict.SUPPORTED, reason="ok")
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", True), \
-             patch("builtins.print"), \
-             patch("chat.llm_judge", return_value=fake_result) as mock_judge:
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", True),
+            patch("builtins.print"),
+            patch("chat.llm_judge", return_value=fake_result) as mock_judge,
+        ):
             chat.ask(vs, "q?", adapter)
         mock_judge.assert_called_once()
 
     def test_judge_not_called_when_agent_judge_off(self):
         import chat
+
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", False), \
-             patch("builtins.print"), \
-             patch("chat.llm_judge") as mock_judge:
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", False),
+            patch("builtins.print"),
+            patch("chat.llm_judge") as mock_judge,
+        ):
             chat.ask(vs, "q?", adapter)
         mock_judge.assert_not_called()
 
     def test_verdict_returned_when_judge_on(self):
         import chat
         from judge import JudgeResult, Verdict
+
         fake_result = JudgeResult(verdict=Verdict.PARTIAL, reason="incomplete")
         vs, adapter = self._setup()
-        with patch.object(chat, "AGENT_DEBUG", False), \
-             patch.object(chat, "AGENT_JUDGE", True), \
-             patch("builtins.print"), \
-             patch("chat.llm_judge", return_value=fake_result):
+        with (
+            patch.object(chat, "AGENT_DEBUG", False),
+            patch.object(chat, "AGENT_JUDGE", True),
+            patch("builtins.print"),
+            patch("chat.llm_judge", return_value=fake_result),
+        ):
             _, verdict = chat.ask(vs, "q?", adapter)
         assert verdict is fake_result
 
@@ -292,6 +337,7 @@ class TestAskJudge:
 # ---------------------------------------------------------------------------
 # main() — graceful exit on Ctrl+C / Ctrl+D
 # ---------------------------------------------------------------------------
+
 
 class TestMain:
     def _mock_vectorstore(self):
@@ -301,24 +347,33 @@ class TestMain:
 
     def test_keyboard_interrupt_exits_cleanly(self, capsys):
         import chat
-        with patch("chat.get_adapter", return_value=MagicMock()), \
-             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
-             patch("builtins.input", side_effect=KeyboardInterrupt):
+
+        with (
+            patch("chat.get_adapter", return_value=MagicMock()),
+            patch("chat.load_vectorstore", return_value=self._mock_vectorstore()),
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
             chat.main()  # must not raise
         assert "Goodbye." in capsys.readouterr().out
 
     def test_eof_error_exits_cleanly(self, capsys):
         import chat
-        with patch("chat.get_adapter", return_value=MagicMock()), \
-             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
-             patch("builtins.input", side_effect=EOFError):
+
+        with (
+            patch("chat.get_adapter", return_value=MagicMock()),
+            patch("chat.load_vectorstore", return_value=self._mock_vectorstore()),
+            patch("builtins.input", side_effect=EOFError),
+        ):
             chat.main()  # must not raise
         assert "Goodbye." in capsys.readouterr().out
 
     def test_exit_command_exits_cleanly(self, capsys):
         import chat
-        with patch("chat.get_adapter", return_value=MagicMock()), \
-             patch("chat.load_vectorstore", return_value=self._mock_vectorstore()), \
-             patch("builtins.input", return_value="exit"):
+
+        with (
+            patch("chat.get_adapter", return_value=MagicMock()),
+            patch("chat.load_vectorstore", return_value=self._mock_vectorstore()),
+            patch("builtins.input", return_value="exit"),
+        ):
             chat.main()
         assert "Goodbye." in capsys.readouterr().out

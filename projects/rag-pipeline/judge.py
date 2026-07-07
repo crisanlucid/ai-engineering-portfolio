@@ -1,14 +1,15 @@
 """LLM-as-judge: validates whether an answer is supported by the retrieved context."""
+
+import contextlib
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from langchain_core.documents import Document
-
 from llm import LLMAdapter
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     SUPPORTED = "SUPPORTED"
     PARTIAL = "PARTIAL"
     NOT_SUPPORTED = "NOT_SUPPORTED"
@@ -22,8 +23,8 @@ class JudgeResult:
     def badge(self) -> str:
         """Colour-coded one-liner for terminal output."""
         icons = {
-            Verdict.SUPPORTED:     "\033[32m✔ SUPPORTED\033[0m",
-            Verdict.PARTIAL:       "\033[33m~ PARTIAL\033[0m",
+            Verdict.SUPPORTED: "\033[32m✔ SUPPORTED\033[0m",
+            Verdict.PARTIAL: "\033[33m~ PARTIAL\033[0m",
             Verdict.NOT_SUPPORTED: "\033[31m✘ NOT SUPPORTED\033[0m",
         }
         return f"{icons[self.verdict]}  —  {self.reason}"
@@ -72,8 +73,8 @@ def _parse_verdict(raw: str) -> JudgeResult:
 
     Falls back gracefully if the model doesn't follow the exact format.
     """
-    verdict = Verdict.PARTIAL   # safe default
-    reason  = raw.strip()       # keep full text as fallback reason
+    verdict = Verdict.PARTIAL  # safe default
+    reason = raw.strip()  # keep full text as fallback reason
 
     verdict_match = re.search(
         r"VERDICT\s*:\s*(SUPPORTED|PARTIAL|NOT[_\s]SUPPORTED)",
@@ -82,10 +83,8 @@ def _parse_verdict(raw: str) -> JudgeResult:
     )
     if verdict_match:
         raw_verdict = verdict_match.group(1).upper().replace(" ", "_")
-        try:
+        with contextlib.suppress(ValueError):
             verdict = Verdict(raw_verdict)
-        except ValueError:
-            pass
 
     reason_match = re.search(r"REASON\s*:\s*(.+)", raw, re.IGNORECASE)
     if reason_match:

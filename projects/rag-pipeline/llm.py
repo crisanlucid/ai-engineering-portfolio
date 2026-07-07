@@ -1,11 +1,10 @@
 import os
-import subprocess
 import shutil
+import subprocess
 from abc import ABC, abstractmethod
 
 CLAUDE_PATH = shutil.which("claude") or "/home/oem/.local/bin/claude"
 AGY_PATH = shutil.which("agy") or "/home/oem/.local/bin/agy"
-
 
 
 class LLMAdapter(ABC):
@@ -16,10 +15,12 @@ class LLMAdapter(ABC):
 class AnthropicAdapter(LLMAdapter):
     def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
         from langchain_anthropic import ChatAnthropic
-        self._llm = ChatAnthropic(model=model, anthropic_api_key=api_key)
+
+        self._llm = ChatAnthropic(model=model, anthropic_api_key=api_key)  # type: ignore[call-arg]
 
     def complete(self, system: str, user: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
+
         response = self._llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
         return str(response.content)
 
@@ -27,10 +28,12 @@ class AnthropicAdapter(LLMAdapter):
 class GoogleAdapter(LLMAdapter):
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         from langchain_google_genai import ChatGoogleGenerativeAI
+
         self._llm = ChatGoogleGenerativeAI(model=model, google_api_key=api_key)
 
     def complete(self, system: str, user: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
+
         response = self._llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
         return str(response.content)
 
@@ -44,11 +47,17 @@ class CLIAdapter(LLMAdapter):
     def complete(self, system: str, user: str) -> str:
         prompt = f"{system}\n\n{user}"
         env = {
-            k: v for k, v in os.environ.items()
-            if k not in {
-                "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
-                "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
-                "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT", "AI_AGENT",
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in {
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_BASE_URL",
+                "CLAUDECODE",
+                "CLAUDE_CODE_SESSION_ID",
+                "CLAUDE_CODE_SSE_PORT",
+                "CLAUDE_CODE_ENTRYPOINT",
+                "AI_AGENT",
             }
         }
         result = subprocess.run(
@@ -75,12 +84,7 @@ class AgyAdapter(LLMAdapter):
         prompt = f"{system}\n\n{user}"
         env = os.environ.copy()
         result = subprocess.run(
-            [
-                AGY_PATH,
-                "--print", prompt,
-                "--model", self._model,
-                "--dangerously-skip-permissions"
-            ],
+            [AGY_PATH, "--print", prompt, "--model", self._model, "--dangerously-skip-permissions"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -104,4 +108,3 @@ def get_adapter() -> LLMAdapter:
     if provider == "agy":
         return AgyAdapter()
     return CLIAdapter()
-

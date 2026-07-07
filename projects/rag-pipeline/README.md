@@ -1,8 +1,35 @@
 # rag-pipeline — RAG Fundamentals
 
-A minimal, fully local **Retrieval-Augmented Generation (RAG)** pipeline built
-as a hands-on reference for understanding how RAG works end-to-end.  
-No cloud vector DB, no managed API required — runs entirely on your machine.
+A minimal, fully local **Retrieval-Augmented Generation (RAG)** pipeline —
+built as a hands-on reference for understanding how RAG actually works,
+end-to-end.
+
+No cloud vector DB. No managed API required. It runs entirely on your machine.
+
+**What's RAG in one sentence?** Instead of asking an LLM a question and hoping
+it remembers the right facts, you first *retrieve* relevant chunks of your own
+documents, then hand those chunks to the LLM as context so it can answer using
+your data instead of guessing.
+
+---
+
+## Quickstart
+
+```bash
+# 1. Install dependencies
+make install                 # or: uv sync
+
+# 2. Add your documents — drop .md or .pdf files into docs/
+
+# 3. Ingest: chunk, embed, and store your docs in ChromaDB
+python ingest.py
+
+# 4. Chat
+python chat.py
+```
+
+That's it — steps 3 and 4 are the whole pipeline. Everything below explains
+what's happening under the hood and how to configure it.
 
 ---
 
@@ -11,6 +38,7 @@ No cloud vector DB, no managed API required — runs entirely on your machine.
 | Concept | Where |
 |---|---|
 | Document loading & chunking | `ingest.py` |
+| Multi-format ingestion (Markdown + PDF) | `ingest.py` — `_load_markdown()` / `_load_pdf()` |
 | Embedding with a local HuggingFace model | `ingest.py` |
 | Vector storage & similarity search (ChromaDB) | `ingest.py` / `chat.py` |
 | L2 distance → cosine similarity conversion | `chat.py` — `retrieve()` |
@@ -24,93 +52,24 @@ No cloud vector DB, no managed API required — runs entirely on your machine.
 ## Architecture
 
 ```
-Documents (docs/*.md)
+Documents (docs/*.md, docs/*.pdf)
         │
         ▼
-  ingest.py
-  ├── load_documents()       — reads .md files from docs/
-  ├── load_manifest()        — loads .chroma/manifest.json (doc cache)
-  ├── partition_documents()  — level-1 cache: skip unchanged docs by hash
-  ├── chunk_documents()      — RecursiveCharacterTextSplitter
-  ├── sync_store()           — level-2 cache: embed new (batched) / reuse / delete stale chunks by hash
-  └── save_manifest()        — persists updated manifest
+   ingest.py
+   ├── load & chunk documents
+   ├── embed chunks (local HuggingFace model)
+   └── store in ChromaDB
+
+Question (you, in the terminal)
         │
         ▼
-  .chroma/  (persisted vector store + manifest.json)
-════════════════════════════════════════════════
-  User question
-        │
-        ▼
-  chat.py
-  ├── retrieve()             — similarity_search_with_score → cosine similarity
-  ├── format_context()       — assembles prompt with source citations
-  ├── ask()                  — calls LLM adapter, optionally runs judge
-  └── main()                 — interactive CLI loop
-        │
-        ├── llm.py           — LLMAdapter (CLI / Anthropic / Google / agy)
-        └── judge.py         — LLM-as-judge → SUPPORTED / PARTIAL / NOT_SUPPORTED
-```
-
----
-
-## Cache Limitation
-
-Chunk reuse depends on where an edit lands in the document.
-`RecursiveCharacterTextSplitter` splits by character offset — an edit
-near the top shifts all downstream chunk boundaries, causing
-re-embedding even for largely unchanged content.
-
-An edit near the end reuses most chunks.
-
-Fix: `SemanticChunker` — but adds embedding cost during splitting.
-Only worth it at high document volume with frequent small edits.
-
----
-
-## Manifest Consistency
-
-`manifest.json` is a denormalized index, not a source of truth — every value
-it stores (`source`, `doc_hash`, `chunk_id`) already lives in each chunk's
-Chroma metadata. It exists only so a no-op run can skip loading the embedding
-model and querying Chroma entirely.
-
-`save_manifest()` runs once, after `sync_store()` finishes. If the process
-dies mid-`sync_store` (embedding failure, OOM), Chroma holds partial writes
-but the manifest never gets updated to match — the next run then trusts a
-stale index.
-
-Alternative: derive hashes from Chroma metadata directly
-(`get(where={"source": ...})`), removing the desync risk at the cost of the
-fast no-op path.
-
----
-
-## Quickstart
-
-### 1. Install dependencies
-
-```bash
-make install        # or: uv sync
-```
-
-### 2. Add your documents
-
-Drop `.md` files into the `docs/` folder.
-
-### 3. Ingest
-
-```bash
-python ingest.py
-```
-
-This chunks your docs, embeds them with
-[`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small),
-and stores them in ChromaDB.
-
-### 4. Chat
-
-```bash
-python chat.py
+   chat.py
+   ├── retrieve()              — embed question, find similar chunks in Chroma
+   ├── format_context()        — build the prompt with retrieved chunks
+   ├── main()                  — interactive CLI loop
+   │
+   ├── llm.py                  — LLMAdapter (CLI / Anthropic / Google / agy)
+   └── judge.py                — LLM-as-judge → SUPPORTED / PARTIAL / NOT_SUPPORTED
 ```
 
 ---
@@ -126,18 +85,11 @@ LLM_PROVIDER=cli
 # API key — required for anthropic / google; unused for cli and agy
 MODEL_API_KEY=
 
-# ChromaDB
-CHROMA_PERSIST_DIR=.chroma
+# Model name — provider-specific
+MODEL_NAME=
 
-# Ingestion
-DOCS_DIR=docs
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=100
-EMBED_BATCH_SIZE=100
+# Embedding model (HuggingFace, runs locally)
 EMBEDDING_MODEL=intfloat/multilingual-e5-small
-
-# Language — en | de
-LANGUAGE=en
 
 # Debug: show cosine retrieval scores per chunk
 AGENT_DEBUG=false
@@ -172,6 +124,7 @@ Shows a cosine similarity score table for every retrieval, printed to `stderr`:
 ```
 
 Each chunk header in the LLM prompt also includes its score:
+
 ```
 --- Chunk 1 | source: docs/README.md | cosine: 0.7986 ---
 ```
@@ -190,7 +143,6 @@ supported by the retrieved context chunks.
 ```
 Answer:
 tesseract.js is an OCR library, supports 100+ languages via WASM SIMD.
-
 Judge:  ✔ SUPPORTED  —  The answer is fully backed by the context.
 ```
 
@@ -205,6 +157,31 @@ Judge:  ✔ SUPPORTED  —  The answer is fully backed by the context.
 
 ---
 
+## PDF Support & Known Limitations
+
+PDFs are extracted with [`pdfplumber`](https://github.com/jsvine/pdfplumber) —
+text-layer only, page by page, joined with a blank line between pages.
+Metadata records `type: pdf` and `pages: <count>`. This covers the common
+case, but has three known gaps:
+
+- **Scanned PDFs** — a scanned page is an image, not text, so `extract_text()`
+  returns nothing. Pages like this are skipped (logged as a warning); a
+  fully-scanned PDF is skipped entirely rather than indexed empty. No OCR is
+  performed — that would need `pytesseract` or similar and is out of scope
+  for now.
+- **Tables** — extracted as flat text rows, not reconstructed structure.
+  Table-heavy PDFs will retrieve, but the tabular relationships are lost.
+- **Headers/footers** — page numbers, running titles, etc. are not stripped,
+  so they get chunked as regular content and can add noise to retrieval.
+
+### Phase 2 Roadmap
+
+- OCR support for scanned PDFs via pytesseract
+- Table extraction with XML conversion
+- Header/footer stripping via heuristics
+
+---
+
 ## Project Structure
 
 ```
@@ -214,12 +191,12 @@ rag-pipeline/
 ├── llm.py             # LLM adapter layer (CLI / Anthropic / Google / agy)
 ├── judge.py           # LLM-as-judge module
 ├── main.py            # Entry point alias
-├── docs/              # Your source documents (drop .md files here)
+├── docs/              # Your source documents (drop .md or .pdf files here)
 ├── tests/
 │   ├── test_chat.py   # 27 tests — retrieve, format, ask, judge wiring, main()
 │   ├── test_llm.py    # 15 tests — adapter routing, subprocess behaviour
 │   ├── test_judge.py  # 22 tests — parsing, badge, judge() integration
-│   └── test_ingest.py # 13 tests — doc/chunk hash caching, batched embedding
+│   └── test_ingest.py # 16 tests — doc/chunk hash caching, batched embedding, md/pdf loading
 └── .env example       # Configuration template
 ```
 
@@ -231,4 +208,38 @@ rag-pipeline/
 uv run pytest projects/rag-pipeline/tests/ -v
 ```
 
-77 tests, no network calls, no LLM invocations — all external dependencies are mocked.
+80 tests, no network calls, no LLM invocations — all external dependencies are mocked.
+
+---
+
+## Design Notes (Advanced)
+
+These sections go into internal trade-offs. Skip them unless you're digging
+into `ingest.py`'s caching behavior.
+
+### Cache Limitation
+
+Chunk reuse depends on where an edit lands in the document.
+`RecursiveCharacterTextSplitter` splits by character offset — an edit
+near the top shifts all downstream chunk boundaries, causing
+re-embedding even for largely unchanged content.
+An edit near the end reuses most chunks.
+
+Fix: `SemanticChunker` — but adds embedding cost during splitting.
+Only worth it at high document volume with frequent small edits.
+
+### Manifest Consistency
+
+`manifest.json` is a denormalized index, not a source of truth — every value
+it stores (`source`, `doc_hash`, `chunk_id`) already lives in each chunk's
+Chroma metadata. It exists only so a no-op run can skip loading the embedding
+model and querying Chroma entirely.
+
+`save_manifest()` runs once, after `sync_store()` finishes. If the process
+dies mid-`sync_store` (embedding failure, OOM), Chroma holds partial writes
+but the manifest never gets updated to match — the next run then trusts a
+stale index.
+
+Alternative: derive hashes from Chroma metadata directly
+(`get(where={"source": ...})`), removing the desync risk at the cost of the
+fast no-op path.

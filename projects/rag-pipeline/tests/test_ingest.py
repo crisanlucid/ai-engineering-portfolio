@@ -1,12 +1,21 @@
 """Unit tests for ingest.py — two-level (doc hash / chunk hash) ingest cache."""
+
 from unittest.mock import MagicMock, patch
 
-from ingest import EMBED_BATCH_SIZE, _hash, chunk_documents, partition_documents, sync_store
+from ingest import (
+    EMBED_BATCH_SIZE,
+    _hash,
+    chunk_documents,
+    load_documents,
+    partition_documents,
+    sync_store,
+)
 from langchain_core.documents import Document
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _doc(source: str, text: str) -> Document:
     return Document(page_content=text, metadata={"source": source})
@@ -92,7 +101,9 @@ class TestSyncStore:
             assert deleted == 0
             added_docs = mock_store.add_documents.call_args.kwargs["documents"]
             assert added_docs == [chunk_b]
-            assert mock_store.add_documents.call_args.kwargs["ids"] == [chunk_b.metadata["chunk_id"]]
+            assert mock_store.add_documents.call_args.kwargs["ids"] == [
+                chunk_b.metadata["chunk_id"]
+            ]
 
     def test_deletes_stale_chunks_from_changed_document(self):
         old_chunk_id = "old-chunk-hash"
@@ -152,7 +163,71 @@ class TestSyncStore:
 
             assert embedded == n
             assert mock_store.add_documents.call_count == 2
-            batch_sizes = [len(c.kwargs["documents"]) for c in mock_store.add_documents.call_args_list]
+            batch_sizes = [
+                len(c.kwargs["documents"]) for c in mock_store.add_documents.call_args_list
+            ]
             assert batch_sizes == [EMBED_BATCH_SIZE, 5]
-            all_documents = [d for c in mock_store.add_documents.call_args_list for d in c.kwargs["documents"]]
+            all_documents = [
+                d for c in mock_store.add_documents.call_args_list for d in c.kwargs["documents"]
+            ]
             assert all_documents == chunks
+
+
+class TestLoadDocuments:
+    @staticmethod
+    def _page(text):
+        page = MagicMock()
+        page.extract_text.return_value = text
+        return page
+
+    def test_loads_markdown_and_pdf(self, tmp_path):
+        (tmp_path / "a.md").write_text("hello md", encoding="utf-8")
+        (tmp_path / "b.pdf").write_bytes(b"%PDF-fake")
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [self._page("page one"), self._page("page two")]
+
+        with (
+            patch("ingest.DOCS_DIR", str(tmp_path)),
+            patch("ingest.pdfplumber.open") as mock_open,
+        ):
+            mock_open.return_value.__enter__.return_value = mock_pdf
+            docs = load_documents()
+
+        by_type = {d.metadata["type"]: d for d in docs}
+        assert len(docs) == 2
+        assert by_type["md"].page_content == "hello md"
+        assert by_type["md"].metadata["source"] == str(tmp_path / "a.md")
+        assert by_type["pdf"].page_content == "page one\n\npage two"
+        assert by_type["pdf"].metadata["pages"] == 2
+
+    def test_skips_blank_page_but_keeps_rest(self, tmp_path):
+        (tmp_path / "b.pdf").write_bytes(b"%PDF-fake")
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [self._page("real text"), self._page(None)]
+
+        with (
+            patch("ingest.DOCS_DIR", str(tmp_path)),
+            patch("ingest.pdfplumber.open") as mock_open,
+        ):
+            mock_open.return_value.__enter__.return_value = mock_pdf
+            docs = load_documents()
+
+        assert len(docs) == 1
+        assert docs[0].page_content == "real text"
+        assert docs[0].metadata["pages"] == 2
+
+    def test_skips_fully_scanned_pdf(self, tmp_path, capsys):
+        (tmp_path / "scanned.pdf").write_bytes(b"%PDF-fake")
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [self._page(None), self._page("")]
+
+        with (
+            patch("ingest.DOCS_DIR", str(tmp_path)),
+            patch("ingest.pdfplumber.open") as mock_open,
+        ):
+            mock_open.return_value.__enter__.return_value = mock_pdf
+            docs = load_documents()
+
+        assert docs == []
+        assert "Skipping" in capsys.readouterr().out

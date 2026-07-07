@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pdfplumber
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -25,16 +26,43 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _load_markdown(path: Path) -> Document:
+    text = path.read_text(encoding="utf-8")
+    return Document(page_content=text, metadata={"source": str(path), "type": "md"})
+
+
+def _load_pdf(path: Path) -> Document | None:
+    with pdfplumber.open(path) as pdf:
+        page_texts = [page.extract_text() for page in pdf.pages]
+        page_texts = [t for t in page_texts if t]
+        page_count = len(pdf.pages)
+
+    if not page_texts:
+        return None
+
+    return Document(
+        page_content="\n\n".join(page_texts),
+        metadata={"source": str(path), "type": "pdf", "pages": page_count},
+    )
+
+
 def load_documents() -> list[Document]:
     print(f"Loading documents from {DOCS_DIR}...")
     docs = []
+    skipped = 0
+
     for path in Path(DOCS_DIR).rglob("*.md"):
-        text = path.read_text(encoding="utf-8")
-        docs.append(Document(
-            page_content=text,
-            metadata={"source": str(path)}
-        ))
-    print(f"Loaded {len(docs)} documents")
+        docs.append(_load_markdown(path))
+
+    for path in Path(DOCS_DIR).rglob("*.pdf"):
+        pdf_doc = _load_pdf(path)
+        if pdf_doc is None:
+            print(f"Skipping {path}: no extractable text (scanned PDF? needs OCR).")
+            skipped += 1
+        else:
+            docs.append(pdf_doc)
+
+    print(f"Loaded {len(docs)} documents ({skipped} skipped as empty/scanned)")
     return docs
 
 
@@ -74,9 +102,7 @@ def partition_documents(
 def chunk_documents(docs: list[Document]) -> list[Document]:
     print(f"Chunking documents with chunk size {CHUNK_SIZE} and overlap {CHUNK_OVERLAP}...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ".", " "]
+        chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=["\n\n", "\n", ".", " "]
     )
     chunks = text_splitter.split_documents(docs)
     for chunk in chunks:
@@ -100,7 +126,9 @@ def sync_store(
     print(f"Syncing chunks with Chroma at {CHROMA_PERSIST_DIR}...")
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cuda" if os.getenv("USE_CUDA", "false").lower() == "true" else "cpu"}
+        model_kwargs={
+            "device": "cuda" if os.getenv("USE_CUDA", "false").lower() == "true" else "cpu"
+        },
     )
     vector_store = Chroma(persist_directory=CHROMA_PERSIST_DIR, embedding_function=embeddings)
 
@@ -111,7 +139,9 @@ def sync_store(
 
     current_ids_by_source: dict[str, list[str]] = {}
     for chunk in chunks:
-        current_ids_by_source.setdefault(chunk.metadata["source"], []).append(chunk.metadata["chunk_id"])
+        current_ids_by_source.setdefault(chunk.metadata["source"], []).append(
+            chunk.metadata["chunk_id"]
+        )
 
     to_delete: list[str] = []
     for doc in docs_to_process:

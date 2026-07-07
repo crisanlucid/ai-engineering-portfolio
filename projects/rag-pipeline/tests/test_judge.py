@@ -1,15 +1,14 @@
 """Unit tests for judge.py — parsing, badge, and judge() integration."""
+
 from unittest.mock import MagicMock
 
-import pytest
+from judge import JudgeResult, Verdict, _build_judge_prompt, _parse_verdict, judge
 from langchain_core.documents import Document
-
-from judge import Verdict, JudgeResult, _parse_verdict, _build_judge_prompt, judge
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _doc(content: str, source: str = "docs/test.md") -> Document:
     return Document(page_content=content, metadata={"source": source})
@@ -28,6 +27,7 @@ def _adapter(response: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 # _parse_verdict
 # ---------------------------------------------------------------------------
+
 
 class TestParseVerdict:
     def test_supported(self):
@@ -85,6 +85,7 @@ class TestParseVerdict:
 # JudgeResult.badge
 # ---------------------------------------------------------------------------
 
+
 class TestJudgeResultBadge:
     def test_supported_badge_contains_text(self):
         r = JudgeResult(verdict=Verdict.SUPPORTED, reason="good")
@@ -103,6 +104,7 @@ class TestJudgeResultBadge:
 # ---------------------------------------------------------------------------
 # _build_judge_prompt
 # ---------------------------------------------------------------------------
+
 
 class TestBuildJudgePrompt:
     def test_includes_chunk_content(self):
@@ -137,6 +139,7 @@ class TestBuildJudgePrompt:
 # judge()
 # ---------------------------------------------------------------------------
 
+
 class TestJudge:
     def test_returns_judge_result(self):
         pairs = [_pair("relevant context")]
@@ -151,7 +154,7 @@ class TestJudge:
         adapter.complete.assert_called_once()
 
     def test_judge_system_prompt_is_passed(self):
-        from judge import JUDGE_SYSTEM
+
         pairs = [_pair("ctx")]
         adapter = _adapter("VERDICT: PARTIAL\nREASON: partial.")
         judge(pairs, "answer", adapter)
