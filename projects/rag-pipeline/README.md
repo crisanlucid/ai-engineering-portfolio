@@ -1,4 +1,4 @@
-# doc-agent — RAG Fundamentals
+# rag-pipeline — RAG Fundamentals
 
 A minimal, fully local **Retrieval-Augmented Generation (RAG)** pipeline built
 as a hands-on reference for understanding how RAG works end-to-end.  
@@ -208,7 +208,7 @@ Judge:  ✔ SUPPORTED  —  The answer is fully backed by the context.
 ## Project Structure
 
 ```
-doc-agent/
+rag-pipeline/
 ├── ingest.py          # Ingestion pipeline
 ├── chat.py            # RAG chat loop
 ├── llm.py             # LLM adapter layer (CLI / Anthropic / Google / agy)
@@ -228,7 +228,7 @@ doc-agent/
 ## Running Tests
 
 ```bash
-uv run pytest projects/doc-agent/tests/ -v
+uv run pytest projects/rag-pipeline/tests/ -v
 ```
 
 77 tests, no network calls, no LLM invocations — all external dependencies are mocked.
